@@ -1,0 +1,13 @@
+{
+  "name": "react-native-async-storage-snappy",
+  "version": "1.0.0",
+  "description": "React Native SnappyDB-based AsyncStorage backend",
+  "main": "index.js",
+  "author": "Mark Vayngrib <mark@tradle.io> (http://github.com/mvayngrib)",
+  "license": "MIT",
+  "keywords": [
+    "react-native",
+    "react-component",
+    "react"
+  ]
+}
