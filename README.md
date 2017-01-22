@@ -24,4 +24,8 @@ import AsyncSnappyStorage from 'react-native-async-storage-snappy'
 NativeModules.AsyncRocksDBStorage = AsyncSnappyStorage
 ```
 
+If this [PR](https://github.com/facebook/react-native/pull/11972) is merged, you will instead be able to do `AsyncStorage.setBackend(AsyncSnappyStorage)`
+
+## Contributing
+
 PRs welcome!
