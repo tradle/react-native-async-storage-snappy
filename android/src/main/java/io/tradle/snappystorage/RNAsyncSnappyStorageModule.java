@@ -10,8 +10,19 @@
 package io.tradle.snappystorage;
 
 import android.support.annotation.Nullable;
+import android.util.Base64;
 
+import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.Serializer;
+import com.esotericsoftware.kryo.io.Input;
+import com.esotericsoftware.kryo.io.Output;
+import com.facebook.android.crypto.keychain.AndroidConceal;
+import com.facebook.android.crypto.keychain.SharedPrefsBackedKeyChain;
 import com.facebook.common.logging.FLog;
+import com.facebook.crypto.Crypto;
+import com.facebook.crypto.CryptoConfig;
+import com.facebook.crypto.Entity;
+import com.facebook.crypto.keychain.KeyChain;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -39,9 +50,13 @@ public final class RNAsyncSnappyStorageModule
   // SQL variable number limit, defined by SQLITE_LIMIT_VARIABLE_NUMBER:
   // https://raw.githubusercontent.com/android/platform_external_sqlite/master/dist/sqlite3.c
   public static final String SNAPPY_ASYNC_STORAGE_MODULE = "RNAsyncSnappyStorage";
+  public static final String E_ENCRYPTION_FIRST = "encrypt() must be the first call to AsyncStorage";
+  public static final String E_ENCRYPTION_NOT_AVAILABLE = "encryption not available";
 
   private DB db;
   private boolean mShuttingDown = false;
+  private Boolean cryptoAvailable = null;
+  private Crypto crypto;
 
   public RNAsyncSnappyStorageModule(ReactApplicationContext reactContext) {
     super(reactContext);
@@ -82,6 +97,33 @@ public final class RNAsyncSnappyStorageModule
     }
   }
 
+  @ReactMethod
+  public void encrypt (final Callback callback) {
+    if (crypto != null) {
+      callback.invoke();
+      return;
+    }
+
+    if (db != null) {
+      callback.invoke(SnappyErrorUtil.getError(null, E_ENCRYPTION_FIRST));
+      return;
+    }
+
+    if (cryptoAvailable == null) {
+      KeyChain keyChain = new SharedPrefsBackedKeyChain(getReactApplicationContext(), CryptoConfig.KEY_256);
+      crypto = AndroidConceal.get().createDefaultCrypto(keyChain);
+      cryptoAvailable = crypto.isAvailable();
+    }
+
+    if (!cryptoAvailable) {
+      crypto = null;
+      callback.invoke(SnappyErrorUtil.getError(null, E_ENCRYPTION_NOT_AVAILABLE));
+      return;
+    }
+
+    callback.invoke();
+  }
+
   /**
    * Given an array of keys, this returns a map of (key, value) pairs for the keys found, and
    * (key, null) for the keys that haven't been found.
@@ -104,7 +146,7 @@ public final class RNAsyncSnappyStorageModule
       row.pushString(key);
       String value;
       try {
-        value = db.get(key);
+        value = get(key);
         row.pushString(value);
       } catch (SnappydbException s) {
         row.pushNull();
@@ -141,7 +183,7 @@ public final class RNAsyncSnappyStorageModule
           break;
         }
 
-        db.put(pair.getString(0), pair.getString(1));
+        put(pair.getString(0), pair.getString(1));
       }
     } catch (SnappydbException s) {
       log(s);
@@ -293,6 +335,23 @@ public final class RNAsyncSnappyStorageModule
     }
   }
 
+  private void put(final String key, final String val) throws SnappydbException {
+    if (crypto != null) {
+      db.put(key, new KeyValuePair().setKey(key).setValue(val));
+      return;
+    }
+
+    db.put(key, val);
+  }
+
+  private String get(final String key) throws SnappydbException {
+    if (crypto != null) {
+      return db.getObject(key, KeyValuePair.class).getValue();
+    }
+
+    return db.get(key);
+  }
+
   private void log (Exception e) {
     FLog.w(SNAPPY_ASYNC_STORAGE_MODULE, e.getMessage(), e);
   }
@@ -308,6 +367,7 @@ public final class RNAsyncSnappyStorageModule
       if (db == null) {
         try {
           db = DBFactory.open(this.getReactApplicationContext(), SNAPPY_ASYNC_STORAGE_MODULE);
+          setupEncryption();
         } catch (SnappydbException e) {
           log(e);
           error = SnappyErrorUtil.getError(e.getMessage());
@@ -323,12 +383,52 @@ public final class RNAsyncSnappyStorageModule
     return true;
   }
 
+  private void setupEncryption () {
+    db.getKryoInstance().addDefaultSerializer(KeyValuePair.class, new Serializer<KeyValuePair>() {
+
+      @Override
+      public void write(Kryo kryo, Output output, KeyValuePair kv) {
+        byte[] plaintextBytes = kv.getValue().getBytes();
+        String key = kv.getKey();
+        String ciphertext;
+        try {
+          byte[] ciphertextBytes = crypto.encrypt(plaintextBytes, Entity.create(key));
+          ciphertext = Base64.encodeToString(ciphertextBytes, Base64.NO_WRAP);
+        } catch (Exception e) {
+          log(e);
+          throw new RuntimeException(e);
+        }
+
+        output.writeString(key);
+        output.writeString(ciphertext);
+      }
+
+      @Override
+      public KeyValuePair read(Kryo kryo, Input input, Class<KeyValuePair> type) {
+        String key = input.readString();
+        byte[] ciphertextBytes = Base64.decode(input.readString(), Base64.NO_WRAP);
+        String plaintext = null;
+        try {
+          byte[] plaintextBytes = crypto.decrypt(ciphertextBytes, Entity.create(key));
+          plaintext = new String(plaintextBytes);
+        } catch (Exception e) {
+          log(e);
+          throw new RuntimeException(e);
+        }
+
+        return new KeyValuePair()
+          .setKey(key)
+          .setValue(plaintext);
+      }
+    });
+  }
+
   private boolean merge (final String key, final String val) throws SnappydbException, JSONException {
     String oldValue;
     try {
-      oldValue = db.get(key);
+      oldValue = get(key);
     } catch (SnappydbException s) {
-      db.put(key, val);
+      put(key, val);
       return true;
     }
 
@@ -336,7 +436,7 @@ public final class RNAsyncSnappyStorageModule
     JSONObject newJSON = new JSONObject(val);
     deepMergeInto(oldJSON, newJSON);
     String newVal = oldJSON.toString();
-    db.put(key, newVal);
+    put(key, newVal);
     return true;
   }
 
