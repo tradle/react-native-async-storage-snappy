@@ -16,15 +16,9 @@ react-native link react-native-async-storage-snappy
 
 ## Usage
 
-AsyncStorage currently doesn't provide a way of swapping out the backend implementation so the easiest way to hack it in is to override the NativeModules.RCTAsyncRocksDBStorage:
+AsyncStorage currently doesn't provide a way of swapping out the backend implementation, so for now you can fork react-native and cherry-pick the commit from this [PR](https://github.com/facebook/react-native/pull/11972) 
 
-```js
-import { NativeModules } from 'react-native'
-import AsyncSnappyStorage from 'react-native-async-storage-snappy'
-NativeModules.AsyncRocksDBStorage = AsyncSnappyStorage
-```
-
-If this [PR](https://github.com/facebook/react-native/pull/11972) is merged, you will instead be able to do `AsyncStorage.setBackend(AsyncSnappyStorage)`
+When it's merged, you will instead be able to do `AsyncStorage.setBackend(AsyncSnappyStorage)`
 
 ## Contributing
 
