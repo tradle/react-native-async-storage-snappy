@@ -335,6 +335,70 @@ public final class RNAsyncSnappyStorageModule
     }
   }
 
+  @ReactMethod
+  public void getAllKeysInRange(String lte, String gte, final Callback callback) {
+    if (!ensureDatabase(callback)) {
+      return;
+    }
+
+    if (lte == null || gte == null) {
+      callback.invoke(SnappyErrorUtil.getInvalidRangeError(null));
+      return;
+    }
+
+    WritableArray data = Arguments.createArray();
+    WritableMap error = null;
+    try {
+      String[] keys = db.findKeysBetween(lte, gte);
+      for (String key: keys) {
+        data.pushString(key);
+      }
+    } catch (SnappydbException s) {
+      log(s);
+      error = SnappyErrorUtil.getError(s.getMessage());
+    }
+
+    if (error != null) {
+      callback.invoke(error, null);
+    } else {
+      callback.invoke(null, data);
+    }
+  }
+
+  /**
+   * Returns an array with all keys from the database.
+   */
+  @ReactMethod
+  public void getAllKeysWithPrefix(String prefix, final Callback callback) {
+    if (!ensureDatabase(callback)) {
+      return;
+    }
+
+    if (prefix == null) {
+      callback.invoke(SnappyErrorUtil.getInvalidPrefixError(null));
+      return;
+    }
+
+    WritableArray data = Arguments.createArray();
+    WritableMap error = null;
+    int prefixLength = prefix.length();
+    try {
+      String[] keys = db.findKeys(prefix);
+      for (String key: keys) {
+        data.pushString(key.substring(prefixLength));
+      }
+    } catch (SnappydbException s) {
+      log(s);
+      error = SnappyErrorUtil.getError(s.getMessage());
+    }
+
+    if (error != null) {
+      callback.invoke(error, null);
+    } else {
+      callback.invoke(null, data);
+    }
+  }
+
   private void put(final String key, final String val) throws SnappydbException {
     if (crypto != null) {
       db.put(key, new KeyValuePair().setKey(key).setValue(val));

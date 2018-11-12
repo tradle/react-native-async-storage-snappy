@@ -47,5 +47,11 @@ public class SnappyErrorUtil {
     return getError(key, "Database Error");
   }
 
+  /* package */ static WritableMap getInvalidRangeError(@Nullable String key) {
+    return getError(key, "Invalid Range");
+  }
 
+  /* package */ static WritableMap getInvalidPrefixError(@Nullable String key) {
+    return getError(key, "Invalid Prefix");
+  }
 }
