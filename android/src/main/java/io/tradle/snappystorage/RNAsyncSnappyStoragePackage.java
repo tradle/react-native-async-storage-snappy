@@ -16,7 +16,6 @@ public class RNAsyncSnappyStoragePackage implements ReactPackage {
       return Arrays.<NativeModule>asList(new RNAsyncSnappyStorageModule(reactContext));
     }
 
-    @Override
     public List<Class<? extends JavaScriptModule>> createJSModules() {
       return Collections.emptyList();
     }
